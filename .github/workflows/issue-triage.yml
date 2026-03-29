@@ -1,0 +1,310 @@
+name: Issue Triage & Draft Response
+
+# Trigger: runs when a new issue is opened
+on:
+  issues:
+    types: [opened]
+
+# Permissions needed to read/write issues and labels
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    steps:
+
+      # -------------------------------------------------------
+      # Step 1: Read the issue content
+      # -------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract issue data
+        id: issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            core.setOutput('number', issue.number);
+            core.setOutput('title', issue.title);
+            core.setOutput('body', issue.body || '');
+            core.setOutput('labels', JSON.stringify(issue.labels.map(l => l.name)));
+            core.setOutput('author', issue.user.login);
+
+      # -------------------------------------------------------
+      # Step 2: Fetch existing issues for duplicate/roadmap check
+      # -------------------------------------------------------
+      - name: Fetch existing issues
+        id: existing
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Fetch open and closed issues (max 100 most recent)
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'all',
+              per_page: 100,
+              sort: 'updated',
+              direction: 'desc'
+            });
+
+            // Exclude the current issue
+            const currentNumber = ${{ steps.issue.outputs.number }};
+            const otherIssues = issues
+              .filter(i => i.number !== currentNumber)
+              .map(i => ({
+                number: i.number,
+                title: i.title,
+                labels: i.labels.map(l => l.name),
+                state: i.state,
+                milestone: i.milestone ? i.milestone.title : null
+              }));
+
+            core.setOutput('issues', JSON.stringify(otherIssues));
+
+      # -------------------------------------------------------
+      # Step 3: Fetch milestones for roadmap check
+      # -------------------------------------------------------
+      - name: Fetch milestones
+        id: milestones
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: milestones } = await github.rest.issues.listMilestones({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'all',
+              sort: 'due_on',
+              direction: 'asc'
+            });
+
+            const mapped = milestones.map(m => ({
+              title: m.title,
+              description: m.description,
+              state: m.state,
+              due_on: m.due_on,
+              open_issues: m.open_issues,
+              closed_issues: m.closed_issues
+            }));
+
+            core.setOutput('milestones', JSON.stringify(mapped));
+
+      # -------------------------------------------------------
+      # Step 4: Call Claude API for triage + draft response
+      # -------------------------------------------------------
+      - name: Claude API - Triage and draft response
+        id: claude
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          # Build the prompt with all context
+          RESPONSE=$(cat <<'PROMPT_END' | jq -Rs '{
+            model: "claude-sonnet-4-20250514",
+            max_tokens: 2000,
+            messages: [{role: "user", content: .}]
+          }' | curl -s https://api.anthropic.com/v1/messages \
+            -H "Content-Type: application/json" \
+            -H "x-api-key: ${ANTHROPIC_API_KEY}" \
+            -H "anthropic-version: 2023-06-01" \
+            -d @-
+          )
+
+          Du bist der Support-Assistent für das Shopware 6 Plugin "ShopInsights".
+          Analysiere das folgende neue Issue und erstelle eine Antwort.
+
+          === NEUES ISSUE ===
+          Titel: ${{ steps.issue.outputs.title }}
+          Erstellt von: ${{ steps.issue.outputs.author }}
+          Labels: ${{ steps.issue.outputs.labels }}
+
+          Inhalt:
+          ${{ steps.issue.outputs.body }}
+
+          === BESTEHENDE ISSUES ===
+          ${{ steps.existing.outputs.issues }}
+
+          === MILESTONES (ROADMAP) ===
+          ${{ steps.milestones.outputs.milestones }}
+
+          === DEINE AUFGABEN ===
+
+          1. KATEGORISIERUNG: Bestimme die Kategorie (bug, enhancement, question).
+             Beachte: Das Issue hat möglicherweise schon Labels aus dem Template.
+
+          2. ANALYSE je nach Kategorie:
+             - Bug: Prüfe ob ein ähnliches Issue existiert (Duplikat-Check).
+               Wenn ja: Nenne die Issue-Nummer des Duplikats.
+               Wenn nein: Es ist ein neuer Bug.
+             - Feature Request: Prüfe ob das Feature in den Milestones/Issues geplant ist.
+               Wenn ja: Nenne den Milestone und ungefähren Zeitrahmen.
+               Wenn nein: Es ist ein neuer Feature-Wunsch.
+             - Frage: Versuche die Frage basierend auf dem Plugin-Kontext zu beantworten.
+
+          3. ANTWORT-ENTWURF: Schreibe eine freundliche, professionelle Antwort.
+             - Sprache: Erkenne die Sprache des Issues und antworte in derselben Sprache.
+             - Sprich den Autor mit @username an.
+             - Bei Duplikaten: Verweise auf das bestehende Issue mit #nummer.
+             - Bei geplanten Features: Nenne den Milestone und Status.
+             - Bei neuen Bugs/Features: Bedanke dich und erkläre die nächsten Schritte.
+             - Bei Fragen: Gib eine hilfreiche Antwort und verweise ggf. auf Doku.
+             - Unterschreibe mit: "— ShopInsights Support (automatisch generiert, Freigabe ausstehend)"
+
+          4. LABELS: Schlage passende Labels vor aus dieser Liste:
+             Priorität: priority:low, priority:medium, priority:high
+             Status: status:known, status:planned, status:draft-response
+             Bereich: area:dashboard, area:report-builder, area:product-performance,
+                      area:abc-analysis, area:inventory, area:installation
+
+          Antworte AUSSCHLIESSLICH in diesem JSON-Format, ohne Markdown-Backticks:
+          {
+            "category": "bug|enhancement|question",
+            "is_duplicate": true/false,
+            "duplicate_of": null oder Issue-Nummer,
+            "is_planned": true/false,
+            "planned_milestone": null oder Milestone-Name,
+            "suggested_labels": ["label1", "label2"],
+            "draft_response": "Dein Antwort-Entwurf hier",
+            "internal_note": "Kurze interne Notiz für Felix zur Einordnung"
+          }
+          PROMPT_END
+
+          # Parse the response - extract text content from Claude's response
+          DRAFT_JSON=$(echo "$RESPONSE" | jq -r '.content[0].text // empty')
+
+          if [ -z "$DRAFT_JSON" ]; then
+            echo "Error: No response from Claude API"
+            echo "$RESPONSE" | jq .
+            exit 1
+          fi
+
+          # Save outputs for next steps
+          echo "json<<EOF" >> $GITHUB_OUTPUT
+          echo "$DRAFT_JSON" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      # -------------------------------------------------------
+      # Step 5: Parse Claude's response
+      # -------------------------------------------------------
+      - name: Parse Claude response
+        id: parsed
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const raw = `${{ steps.claude.outputs.json }}`;
+
+            let data;
+            try {
+              // Remove potential markdown fences
+              const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+              data = JSON.parse(cleaned);
+            } catch (e) {
+              core.setFailed(`Failed to parse Claude response: ${e.message}\nRaw: ${raw}`);
+              return;
+            }
+
+            core.setOutput('category', data.category);
+            core.setOutput('is_duplicate', data.is_duplicate);
+            core.setOutput('duplicate_of', data.duplicate_of);
+            core.setOutput('suggested_labels', JSON.stringify(data.suggested_labels));
+            core.setOutput('draft_response', data.draft_response);
+            core.setOutput('internal_note', data.internal_note);
+
+      # -------------------------------------------------------
+      # Step 6: Apply labels
+      # -------------------------------------------------------
+      - name: Apply labels
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const labels = JSON.parse('${{ steps.parsed.outputs.suggested_labels }}');
+
+            // Always add draft-response label
+            if (!labels.includes('status:draft-response')) {
+              labels.push('status:draft-response');
+            }
+
+            // Remove triage label since we've now triaged
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: ${{ steps.issue.outputs.number }},
+                name: 'triage'
+              });
+            } catch (e) {
+              // Label might not exist, that's ok
+            }
+
+            // Add new labels
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ steps.issue.outputs.number }},
+              labels: labels
+            });
+
+      # -------------------------------------------------------
+      # Step 7: Post draft response as collapsed comment
+      # -------------------------------------------------------
+      - name: Post draft response comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const draftResponse = `${{ steps.parsed.outputs.draft_response }}`;
+            const internalNote = `${{ steps.parsed.outputs.internal_note }}`;
+            const category = '${{ steps.parsed.outputs.category }}';
+            const isDuplicate = '${{ steps.parsed.outputs.is_duplicate }}' === 'true';
+            const duplicateOf = '${{ steps.parsed.outputs.duplicate_of }}';
+
+            // Build the comment with collapsed draft
+            let comment = `### 🤖 Automatische Triage\n\n`;
+            comment += `**Kategorie:** ${category}\n`;
+
+            if (isDuplicate && duplicateOf) {
+              comment += `**Duplikat von:** #${duplicateOf}\n`;
+            }
+
+            comment += `\n> **Interne Notiz:** ${internalNote}\n\n`;
+
+            comment += `<details>\n`;
+            comment += `<summary>📝 <strong>Antwort-Entwurf</strong> (aufklappen zum Prüfen)</summary>\n\n`;
+            comment += `---\n\n`;
+            comment += draftResponse;
+            comment += `\n\n---\n\n`;
+            comment += `</details>\n\n`;
+
+            comment += `*Zum Freigeben: Entwurf aufklappen, Inhalt kopieren und als neuen Kommentar posten. `;
+            comment += `Danach das Label \`status:draft-response\` entfernen.*`;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ steps.issue.outputs.number }},
+              body: comment
+            });
+
+      # -------------------------------------------------------
+      # Step 8: If duplicate, add note to original issue
+      # -------------------------------------------------------
+      - name: Note on original issue (if duplicate)
+        if: steps.parsed.outputs.is_duplicate == 'true' && steps.parsed.outputs.duplicate_of != 'null'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const duplicateOf = parseInt('${{ steps.parsed.outputs.duplicate_of }}');
+            const currentIssue = ${{ steps.issue.outputs.number }};
+            const author = '${{ steps.issue.outputs.author }}';
+
+            if (isNaN(duplicateOf)) return;
+
+            const comment = `📌 Weitere Meldung zu diesem Thema von @${author} in #${currentIssue}.`;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: duplicateOf,
+              body: comment
+            });
