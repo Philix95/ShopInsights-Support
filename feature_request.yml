@@ -1,0 +1,71 @@
+name: "Feature Request"
+description: "Eine neue Funktion oder Verbesserung vorschlagen"
+title: "[Feature]: "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Danke für deinen Vorschlag! Wir prüfen jeden Feature Request gegen unsere Roadmap und melden uns zeitnah zurück.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: "Bereich"
+      description: "Zu welchem Bereich gehört dein Vorschlag?"
+      options:
+        - Dashboard / Übersicht
+        - Report Builder
+        - Produkt-Performance
+        - ABC-Analyse
+        - Bestandsoptimierung
+        - Neue Analyse / neues Modul
+        - Export / Import
+        - API / Integration
+        - Sonstiges
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: "Welches Problem soll gelöst werden?"
+      description: "Beschreibe das Problem oder den Anwendungsfall, für den du eine Lösung brauchst."
+      placeholder: "Ich möchte gerne ..., weil ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: "Gewünschte Lösung"
+      description: "Wie stellst du dir die Umsetzung vor?"
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: "Alternativen"
+      description: "Hast du alternative Lösungen oder Workarounds in Betracht gezogen?"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: "Wie wichtig ist dieses Feature für dich?"
+      options:
+        - "Nice-to-have"
+        - "Wichtig für meinen Workflow"
+        - "Kritisch / Blocker"
+    validations:
+      required: true
+
+  - type: input
+    id: plugin-version
+    attributes:
+      label: "Aktuelle Plugin-Version"
+      placeholder: "z.B. 1.2.0"
+    validations:
+      required: false

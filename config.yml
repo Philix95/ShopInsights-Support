@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: "Dokumentation / FAQ"
+    url: https://github.com/Philix95/ShopInsights-Support/wiki
+    about: "Antworten auf häufige Fragen findest du in unserer Dokumentation."
+  - name: "Shopware Community Store"
+    url: https://store.shopware.com
+    about: "ShopInsights im Shopware Community Store ansehen."

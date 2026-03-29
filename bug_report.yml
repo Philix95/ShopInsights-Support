@@ -1,0 +1,98 @@
+name: "Bug Report"
+description: "Einen Fehler im ShopInsights Plugin melden"
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Danke, dass du dir die Zeit nimmst, einen Bug zu melden! Bitte fülle die folgenden Felder so vollständig wie möglich aus — das hilft uns, das Problem schneller zu finden und zu beheben.
+
+  - type: input
+    id: plugin-version
+    attributes:
+      label: "Plugin-Version"
+      description: "Welche Version von ShopInsights verwendest du?"
+      placeholder: "z.B. 1.2.0"
+    validations:
+      required: true
+
+  - type: input
+    id: shopware-version
+    attributes:
+      label: "Shopware-Version"
+      description: "Welche Shopware 6 Version ist installiert?"
+      placeholder: "z.B. 6.6.4.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: "Betroffener Bereich"
+      description: "Welcher Teil des Plugins ist betroffen?"
+      options:
+        - Dashboard / Übersicht
+        - Report Builder
+        - Produkt-Performance
+        - ABC-Analyse
+        - Bestandsoptimierung
+        - Installation / Update
+        - Sonstiges
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: "Fehlerbeschreibung"
+      description: "Was passiert und was hättest du stattdessen erwartet?"
+      placeholder: |
+        Was passiert:
+        ...
+
+        Was ich erwartet hätte:
+        ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: "Schritte zum Reproduzieren"
+      description: "Wie können wir den Fehler nachstellen?"
+      placeholder: |
+        1. Gehe zu ...
+        2. Klicke auf ...
+        3. Fehler erscheint
+    validations:
+      required: true
+
+  - type: textarea
+    id: console-errors
+    attributes:
+      label: "Browser-Konsole / Fehlermeldungen"
+      description: "Gibt es Fehlermeldungen in der Browser-Konsole (F12) oder im Shopware-Log?"
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: "Screenshots"
+      description: "Falls vorhanden, füge Screenshots hinzu, die das Problem zeigen."
+    validations:
+      required: false
+
+  - type: dropdown
+    id: php-version
+    attributes:
+      label: "PHP-Version"
+      options:
+        - "8.1"
+        - "8.2"
+        - "8.3"
+        - "Unbekannt"
+    validations:
+      required: false
