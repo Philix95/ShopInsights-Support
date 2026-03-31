@@ -16,14 +16,13 @@ jobs:
     steps:
 
       # -------------------------------------------------------
-      # Step 1: Checkout repository
+      # Step 1: Checkout repository (includes docs/ folder)
       # -------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
       # -------------------------------------------------------
       # Step 2: Triage issue with Claude API
-      # All logic in one step to avoid shell escaping issues
       # -------------------------------------------------------
       - name: Triage issue with Claude API
         id: triage
@@ -32,6 +31,9 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         with:
           script: |
+            const fs = require('fs');
+            const path = require('path');
+
             // --- Collect issue data ---
             const issue = context.payload.issue;
             const issueNumber = issue.number;
@@ -39,6 +41,29 @@ jobs:
             const issueBody = issue.body || '';
             const issueAuthor = issue.user.login;
             const issueLabels = issue.labels.map(l => l.name);
+
+            // --- Load docs/ content as knowledge base ---
+            let docsContent = 'Keine Dokumentation verfügbar.';
+            const docsDir = path.join(process.env.GITHUB_WORKSPACE, 'docs');
+
+            try {
+              if (fs.existsSync(docsDir)) {
+                const docFiles = fs.readdirSync(docsDir)
+                  .filter(f => f.endsWith('.md'));
+
+                const docPages = docFiles.map(f => {
+                  const content = fs.readFileSync(path.join(docsDir, f), 'utf8');
+                  const pageName = f.replace('.md', '').replace(/-/g, ' ');
+                  return `### ${pageName}\n${content}`;
+                });
+
+                if (docPages.length > 0) {
+                  docsContent = docPages.join('\n\n---\n\n');
+                }
+              }
+            } catch (e) {
+              core.warning(`Could not load docs: ${e.message}`);
+            }
 
             // --- Fetch existing issues for duplicate check ---
             const { data: allIssues } = await github.rest.issues.listForRepo({
@@ -77,6 +102,8 @@ jobs:
             }));
 
             // --- Build prompt ---
+            const docsBaseUrl = 'https://github.com/Philix95/ShopInsights-Support/blob/main/docs';
+
             const prompt = `Du bist der Support-Assistent für das Shopware 6 Plugin "ShopInsights".
             Analysiere das folgende neue Issue und erstelle eine Antwort.
 
@@ -94,6 +121,11 @@ jobs:
             === MILESTONES (ROADMAP) ===
             ${JSON.stringify(milestones, null, 2)}
 
+            === DOKUMENTATION / FAQ (Wissensbasis) ===
+            ${docsContent}
+
+            Basis-URL für Doku-Verweise: ${docsBaseUrl}
+
             === DEINE AUFGABEN ===
 
             1. KATEGORISIERUNG: Bestimme die Kategorie (bug, enhancement, question).
@@ -106,7 +138,10 @@ jobs:
                - Feature Request: Prüfe ob das Feature in den Milestones/Issues geplant ist.
                  Wenn ja: Nenne den Milestone und ungefähren Zeitrahmen.
                  Wenn nein: Es ist ein neuer Feature-Wunsch.
-               - Frage: Versuche die Frage basierend auf dem Plugin-Kontext zu beantworten.
+               - Frage: Versuche die Frage basierend auf der Dokumentation und dem
+                 Plugin-Kontext zu beantworten. Verweise auf die passende Doku-Seite
+                 mit einem Link im Format:
+                 ${docsBaseUrl}/dateiname.md
 
             3. ANTWORT-ENTWURF: Schreibe eine freundliche, professionelle Antwort.
                - Sprache: Erkenne die Sprache des Issues und antworte in derselben Sprache.
@@ -114,7 +149,8 @@ jobs:
                - Bei Duplikaten: Verweise auf das bestehende Issue mit #nummer.
                - Bei geplanten Features: Nenne den Milestone und Status.
                - Bei neuen Bugs/Features: Bedanke dich und erkläre die nächsten Schritte.
-               - Bei Fragen: Gib eine hilfreiche Antwort und verweise ggf. auf Doku.
+               - Bei Fragen: Gib eine hilfreiche Antwort basierend auf der Dokumentation
+                 und verweise auf die passende Doku-Seite.
                - Unterschreibe mit: "— ShopInsights Support (automatisch generiert, Freigabe ausstehend)"
 
             4. LABELS: Schlage passende Labels vor aus dieser Liste:
