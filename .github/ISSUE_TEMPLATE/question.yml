@@ -3,11 +3,6 @@ description: "Eine Frage zur Nutzung oder Konfiguration von ShopInsights"
 title: "[Frage]: "
 labels: ["question", "triage"]
 body:
-  - type: markdown
-    attributes:
-      value: |
-        Stelle hier deine Frage — wir helfen gerne! Schau auch in unsere [Dokumentation](https://github.com/Philix95/ShopInsights-Support/wiki), vielleicht findest du dort schon eine Antwort.
-
   - type: dropdown
     id: area
     attributes:
@@ -43,9 +38,3 @@ body:
     validations:
       required: false
 
-  - type: checkboxes
-    id: docs-checked
-    attributes:
-      label: "Dokumentation geprüft"
-      options:
-        - label: "Ich habe die Dokumentation / FAQ bereits durchsucht"
